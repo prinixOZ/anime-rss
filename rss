@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+anime="One Piece|Boruto|Spy x Family " # Name the anime you want to download with "|" as a sepretor
+downloadDir="$HOME/media/Torrent/Anime" #Path of the download folder
+
+
+link="https://subsplease.org/rss/?r=1080" # Link to the rss feed
+rss=$(curl -s -L $link |\
+	grep -Eo "<item>.{1,}<item>" |\
+	sed -r 's/<\/[a-z]{1,}>/\n/g' |\
+	sed -r '/<guid.{1,}>/d' |\
+	sed -r 's/<.{1,}>//g' |\
+	sed -r 's/\(.{1,}\)//g' |\
+	sed -r 's/\[.{1,10}\]//g'|\
+	sed 's/\ \ //g' |\
+	sed 's/^ *//'|\
+	grep -E "magnet|\.mkv" |\
+	xargs |\
+	sed 's/tracker\.openwebtorrent\.com/tracker.openwebtorrent.com\n/g'|\
+	sed 's/\.mkv\ /.mkv\ |\ /g' |\
+	sed 's/^ *//'|\
+	grep -E "$anime"
+) # Curling and clearing rss feed into more usable form
+
+
+function makefolder(){
+	foldername=$(echo $1 | sed -r 's/\ \-\ [0-9]{1,}\.mkv//g')
+	mkdir -p "$downloadDir"\/"$foldername"
+	echo $foldername
+} # Make the folder with appropriate name according to the anime
+
+function changename(){
+	epno=$(echo $2 | grep -Eo "[0-9]{1,}\.mkv" | sed 's/.mkv//g')
+	basename=$(echo "$1" | awk -F '/' '{print $NF}')
+	originalfile=$(ls "$1" | grep "$basename" | grep "$epno")
+	mv "$1/$originalfile" "$1/$2"
+} # Change name to the nicer format insted of the torrent watermark name
+
+function download(){
+	aria2c -c --seed-time=0 -d "$3" -o "$1" "$2"
+	notify-send "Download Completed" "$1"
+	changename "$3" "$1"
+} # Simply downloading and calling for different functions which is needed for downloading
+
+for i in $(seq $(echo "$rss" | wc -l))
+do
+	anime=$(echo "$rss" | sed "${i}q;d")
+	name=$(echo "$anime" | awk -F "|" '{print $1}')
+	magnet=$(echo "$anime" | awk -F "|" '{print $2}'|sed 's/^ *//')
+	folder=$(echo $downloadDir\/$(makefolder "$name"))
+	path="$folder/$name" 
+	
+	if [ ! -f "$path" ] ; then 	# Checking if the file already exists or not before downlaoding
+		ans=$(printf "Yes\nNo" | dmenu -l 8 -nb "#0F0F0F" -sb "$(cat ~/.cache/wal/colors | sed -n 11p)" -p "Choose: ")
+		if [ $ans == "Yes" ] ; then
+			download "$name" "$magnet" "$folder"
+		fi
+	fi
+done # looping through the list with the required anime and running download function with required parameters
